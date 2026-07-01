@@ -22,6 +22,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
@@ -53,6 +54,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        configureSystemBars();
         loadLists();
         showListsScreen();
     }
@@ -96,7 +98,7 @@ public class MainActivity extends Activity {
             root.addView(listCard(list), fullWidthWithBottomMargin(ViewGroup.LayoutParams.WRAP_CONTENT, dp(10)));
         }
 
-        setContentView(scrollView);
+        setBufferedContentView(scrollView, root);
     }
 
     private View listCard(InventoryList list) {
@@ -192,7 +194,7 @@ public class MainActivity extends Activity {
             }
         }
 
-        setContentView(scrollView);
+        setBufferedContentView(scrollView, root);
     }
 
     private ArrayList<InventoryItem> orderedItems(InventoryList list) {
@@ -725,6 +727,57 @@ public class MainActivity extends Activity {
             resolver.delete(Uri.parse(uriString), null, null);
         } catch (Exception ignored) {
         }
+    }
+
+    private void configureSystemBars() {
+        Window window = getWindow();
+        if (window == null) return;
+        window.setStatusBarColor(Color.rgb(246, 248, 252));
+        window.setNavigationBarColor(Color.WHITE);
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        }
+    }
+
+    private void setBufferedContentView(ScrollView scrollView, LinearLayout root) {
+        int baseLeft = dp(12);
+        int baseTop = dp(14);
+        int baseRight = dp(12);
+        int baseBottom = dp(24);
+
+        scrollView.setOnApplyWindowInsetsListener((view, insets) -> {
+            int topInset = insets.getSystemWindowInsetTop();
+            int bottomInset = insets.getSystemWindowInsetBottom();
+            int leftInset = insets.getSystemWindowInsetLeft();
+            int rightInset = insets.getSystemWindowInsetRight();
+            root.setPadding(
+                    baseLeft + leftInset,
+                    baseTop + topInset,
+                    baseRight + rightInset,
+                    baseBottom + bottomInset
+            );
+            return insets;
+        });
+
+        // Fallback padding before the first inset pass, useful on older devices/emulators.
+        root.setPadding(
+                baseLeft,
+                baseTop + statusBarHeight(),
+                baseRight,
+                baseBottom + navigationBarHeight()
+        );
+        setContentView(scrollView);
+        scrollView.requestApplyInsets();
+    }
+
+    private int statusBarHeight() {
+        int resId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        return resId > 0 ? getResources().getDimensionPixelSize(resId) : dp(24);
+    }
+
+    private int navigationBarHeight() {
+        int resId = getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+        return resId > 0 ? getResources().getDimensionPixelSize(resId) : dp(16);
     }
 
     private ScrollView baseScrollView() {

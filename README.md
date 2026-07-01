@@ -18,6 +18,7 @@ A tiny native Android inventory app.
 - `✎` edits quantity/notes.
 - `×` deletes a scan.
 - `⋮` on the list screen contains export/import.
+- The main screens now apply status/navigation bar safe-area padding so content does not overlap the phone notification bar or bottom gesture/navigation area.
 
 The app uses only Android's built-in Java APIs. There is no Flutter, React Native, Firebase, or server.
 
