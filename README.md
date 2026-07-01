@@ -1,34 +1,31 @@
 # Inventory Snap
 
-A tiny native Android inventory app:
+A tiny native Android inventory app.
 
-- Take a photo of an item.
-- Add quantity.
-- Add notes.
-- See scans in a compact two-column mobile grid.
-- Tap any scan image to view it full screen.
-- Mark scans as **Done** so they move to the bottom and appear grey/struck-through.
-- Create and switch between multiple scan lists.
-- Edit quantity/notes.
-- Delete items.
-- Export/import inventory JSON.
+## Current UI
 
-The app is intentionally simple and uses only Android's built-in Java APIs. There is no Flutter, React Native, Firebase, or server.
+- First screen: scan lists.
+- Tap a list to open its scans.
+- `+` on the list screen creates a new list.
+- `×` on a list deletes the whole list.
+- Second screen: scans for the selected list.
+- `+` on the scan screen takes a new scan.
+- Scans are shown in a two-column grid.
+- Images use `FIT_CENTER`, so photos are not cropped.
+- Tap an image to view it full screen.
+- `✓` marks a scan done. Done scans move to the bottom and are greyed/struck-through.
+- `↺` undoes done.
+- `✎` edits quantity/notes.
+- `×` deletes a scan.
+- `⋮` on the list screen contains export/import.
+
+The app uses only Android's built-in Java APIs. There is no Flutter, React Native, Firebase, or server.
 
 ## Device support
 
 This version targets Android 10+ (`minSdk 29`) so it can save full-size camera photos through Android's scoped MediaStore API without needing a separate file-provider library.
 
 Photos are saved under your phone gallery's `Pictures/InventorySnap` folder. The item lists are stored locally on the phone using SharedPreferences.
-
-## What changed in this version
-
-- Image previews now use `FIT_CENTER`, so the original photo is shown without cropping.
-- Images can be opened full screen by tapping them.
-- The scan list now renders as two columns to fit more scans on screen.
-- Every scan has a **Done** button. Done scans move to the bottom and are greyed/struck-through.
-- Added multiple scan lists with **New List** and **Switch List** buttons.
-- Export/import now supports all lists. Older single-list JSON exports are still accepted during import.
 
 ## Build the APK without installing Android Studio
 

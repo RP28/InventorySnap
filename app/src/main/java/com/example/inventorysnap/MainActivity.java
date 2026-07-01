@@ -47,114 +47,237 @@ public class MainActivity extends Activity {
     private static final String KEY_ACTIVE_LIST_ID = "active_list_id";
 
     private final ArrayList<InventoryList> scanLists = new ArrayList<>();
-    private LinearLayout listContainer;
-    private TextView statsText;
-    private TextView emptyText;
-    private TextView activeListText;
     private Uri pendingPhotoUri;
+    private boolean showingScanScreen = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         loadLists();
-        buildUi();
-        renderList();
+        showListsScreen();
     }
 
-    private void buildUi() {
-        ScrollView scrollView = new ScrollView(this);
-        scrollView.setFillViewport(true);
-        scrollView.setBackgroundColor(Color.rgb(246, 248, 252));
+    @Override
+    public void onBackPressed() {
+        if (showingScanScreen) {
+            showListsScreen();
+        } else {
+            super.onBackPressed();
+        }
+    }
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(12), dp(14), dp(12), dp(24));
+    private void showListsScreen() {
+        showingScanScreen = false;
+
+        ScrollView scrollView = baseScrollView();
+        LinearLayout root = baseRoot();
         scrollView.addView(root, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        TextView title = new TextView(this);
-        title.setText("Inventory Snap");
-        title.setTextSize(28);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setTextColor(Color.rgb(17, 24, 39));
-        root.addView(title);
+        LinearLayout top = toolbar();
+        TextView title = screenTitle("Lists");
+        top.addView(title, weightedParams(dp(48), 1));
 
-        TextView subtitle = new TextView(this);
-        subtitle.setText("Take photos, add quantity and notes, then track multiple scan lists.");
-        subtitle.setTextSize(14);
-        subtitle.setTextColor(Color.rgb(75, 85, 99));
-        subtitle.setPadding(0, dp(6), 0, dp(10));
-        root.addView(subtitle);
+        Button addList = iconButton("+", true);
+        addList.setOnClickListener(v -> showNewListDialog());
+        top.addView(addList, squareParams(48));
 
-        activeListText = new TextView(this);
-        activeListText.setTextSize(16);
-        activeListText.setTypeface(Typeface.DEFAULT_BOLD);
-        activeListText.setTextColor(Color.rgb(37, 99, 235));
-        activeListText.setPadding(0, 0, 0, dp(10));
-        root.addView(activeListText);
+        SpaceView menuGap = new SpaceView(this);
+        top.addView(menuGap, new LinearLayout.LayoutParams(dp(8), 1));
 
-        LinearLayout controls = new LinearLayout(this);
-        controls.setOrientation(LinearLayout.VERTICAL);
-        controls.setPadding(0, 0, 0, dp(10));
-        root.addView(controls);
+        Button menu = iconButton("⋮", false);
+        menu.setOnClickListener(v -> showAppMenu());
+        top.addView(menu, squareParams(48));
+        root.addView(top, fullWidthParams(dp(54)));
 
-        Button addButton = button("Take Photo + Add", true);
-        addButton.setOnClickListener(v -> capturePhoto());
-        controls.addView(addButton, fullWidthParams(dp(50)));
-
-        LinearLayout listButtonsRow = new LinearLayout(this);
-        listButtonsRow.setOrientation(LinearLayout.HORIZONTAL);
-        listButtonsRow.setPadding(0, dp(8), 0, 0);
-        controls.addView(listButtonsRow);
-
-        Button newListButton = button("New List", false);
-        newListButton.setOnClickListener(v -> showNewListDialog());
-        listButtonsRow.addView(newListButton, weightedParams(dp(44), 1));
-
-        SpaceView listGap = new SpaceView(this);
-        listButtonsRow.addView(listGap, new LinearLayout.LayoutParams(dp(8), 1));
-
-        Button switchListButton = button("Switch List", false);
-        switchListButton.setOnClickListener(v -> showSwitchListDialog());
-        listButtonsRow.addView(switchListButton, weightedParams(dp(44), 1));
-
-        LinearLayout secondaryRow = new LinearLayout(this);
-        secondaryRow.setOrientation(LinearLayout.HORIZONTAL);
-        secondaryRow.setPadding(0, dp(8), 0, 0);
-        controls.addView(secondaryRow);
-
-        Button exportButton = button("Export JSON", false);
-        exportButton.setOnClickListener(v -> exportJson());
-        secondaryRow.addView(exportButton, weightedParams(dp(44), 1));
-
-        SpaceView gap = new SpaceView(this);
-        secondaryRow.addView(gap, new LinearLayout.LayoutParams(dp(8), 1));
-
-        Button importButton = button("Import JSON", false);
-        importButton.setOnClickListener(v -> showImportDialog());
-        secondaryRow.addView(importButton, weightedParams(dp(44), 1));
-
-        statsText = new TextView(this);
-        statsText.setTextSize(14);
-        statsText.setTextColor(Color.rgb(75, 85, 99));
-        statsText.setPadding(0, dp(2), 0, dp(10));
-        root.addView(statsText);
-
-        emptyText = new TextView(this);
-        emptyText.setText("No scans in this list yet. Tap “Take Photo + Add” to start.");
-        emptyText.setTextSize(16);
-        emptyText.setGravity(Gravity.CENTER);
-        emptyText.setTextColor(Color.rgb(107, 114, 128));
-        emptyText.setPadding(dp(20), dp(50), dp(20), dp(50));
-        root.addView(emptyText, fullWidthParams(ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        listContainer = new LinearLayout(this);
-        listContainer.setOrientation(LinearLayout.VERTICAL);
-        root.addView(listContainer, fullWidthParams(ViewGroup.LayoutParams.WRAP_CONTENT));
+        for (InventoryList list : scanLists) {
+            root.addView(listCard(list), fullWidthWithBottomMargin(ViewGroup.LayoutParams.WRAP_CONTENT, dp(10)));
+        }
 
         setContentView(scrollView);
+    }
+
+    private View listCard(InventoryList list) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(14), dp(14), dp(10), dp(14));
+        card.setBackground(cardBackground(Color.WHITE, dp(18), Color.rgb(229, 231, 235)));
+        card.setOnClickListener(v -> {
+            setActiveListId(list.id);
+            saveLists();
+            showScanScreen();
+        });
+
+        LinearLayout textBox = new LinearLayout(this);
+        textBox.setOrientation(LinearLayout.VERTICAL);
+        card.addView(textBox, weightedParams(ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        TextView name = new TextView(this);
+        name.setText(safeListName(list));
+        name.setTextSize(20);
+        name.setTypeface(Typeface.DEFAULT_BOLD);
+        name.setTextColor(Color.rgb(17, 24, 39));
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        textBox.addView(name);
+
+        int active = 0;
+        int done = 0;
+        for (InventoryItem item : list.items) {
+            if (item.done) done++; else active++;
+        }
+
+        TextView count = new TextView(this);
+        count.setText(active + " • " + done + "✓");
+        count.setTextSize(13);
+        count.setTextColor(Color.rgb(107, 114, 128));
+        count.setPadding(0, dp(4), 0, 0);
+        textBox.addView(count);
+
+        Button delete = iconButton("×", false);
+        delete.setTextColor(Color.rgb(185, 28, 28));
+        delete.setOnClickListener(v -> confirmDeleteList(list));
+        card.addView(delete, squareParams(42));
+
+        return card;
+    }
+
+    private void showScanScreen() {
+        showingScanScreen = true;
+        InventoryList activeList = activeList();
+
+        ScrollView scrollView = baseScrollView();
+        LinearLayout root = baseRoot();
+        scrollView.addView(root, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        LinearLayout top = toolbar();
+
+        Button back = iconButton("‹", false);
+        back.setTextSize(30);
+        back.setOnClickListener(v -> showListsScreen());
+        top.addView(back, squareParams(48));
+
+        TextView title = screenTitle(safeListName(activeList));
+        title.setTextSize(22);
+        top.addView(title, weightedParams(dp(48), 1));
+
+        Button addScan = iconButton("+", true);
+        addScan.setOnClickListener(v -> capturePhoto());
+        top.addView(addScan, squareParams(48));
+
+        root.addView(top, fullWidthParams(dp(54)));
+
+        ArrayList<InventoryItem> visibleItems = orderedItems(activeList);
+        for (int i = 0; i < visibleItems.size(); i += 2) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setPadding(0, 0, 0, dp(10));
+            root.addView(row, fullWidthParams(ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            row.addView(itemCard(visibleItems.get(i)), weightedParams(ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            SpaceView gap = new SpaceView(this);
+            row.addView(gap, new LinearLayout.LayoutParams(dp(10), 1));
+
+            if (i + 1 < visibleItems.size()) {
+                row.addView(itemCard(visibleItems.get(i + 1)), weightedParams(ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            } else {
+                SpaceView emptyCell = new SpaceView(this);
+                row.addView(emptyCell, weightedParams(ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            }
+        }
+
+        setContentView(scrollView);
+    }
+
+    private ArrayList<InventoryItem> orderedItems(InventoryList list) {
+        ArrayList<InventoryItem> visibleItems = new ArrayList<>();
+        for (InventoryItem item : list.items) {
+            if (!item.done) visibleItems.add(item);
+        }
+        for (InventoryItem item : list.items) {
+            if (item.done) visibleItems.add(item);
+        }
+        return visibleItems;
+    }
+
+    private View itemCard(InventoryItem item) {
+        int cardColor = item.done ? Color.rgb(229, 231, 235) : Color.WHITE;
+        int strokeColor = item.done ? Color.rgb(209, 213, 219) : Color.rgb(229, 231, 235);
+        int primaryTextColor = item.done ? Color.rgb(107, 114, 128) : Color.rgb(17, 24, 39);
+        int secondaryTextColor = item.done ? Color.rgb(156, 163, 175) : Color.rgb(55, 65, 81);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(8), dp(8), dp(8), dp(8));
+        card.setBackground(cardBackground(cardColor, dp(16), strokeColor));
+
+        ImageView photo = new ImageView(this);
+        photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        photo.setAdjustViewBounds(true);
+        photo.setBackgroundColor(Color.rgb(243, 244, 246));
+        if (item.done) photo.setAlpha(0.42f);
+        try {
+            photo.setImageURI(Uri.parse(item.photoUri));
+        } catch (Exception ignored) {
+        }
+        photo.setOnClickListener(v -> showFullScreenPhoto(item.photoUri));
+        card.addView(photo, fullWidthParams(dp(138)));
+
+        TextView qty = new TextView(this);
+        qty.setText("× " + item.quantity);
+        qty.setTextSize(18);
+        qty.setTypeface(Typeface.DEFAULT_BOLD);
+        qty.setTextColor(primaryTextColor);
+        qty.setPadding(0, dp(8), 0, dp(2));
+        if (item.done) qty.setPaintFlags(qty.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
+        card.addView(qty);
+
+        if (item.notes != null && !item.notes.trim().isEmpty()) {
+            TextView notes = new TextView(this);
+            notes.setText(item.notes);
+            notes.setTextSize(13);
+            notes.setTextColor(secondaryTextColor);
+            notes.setPadding(0, dp(2), 0, 0);
+            notes.setMaxLines(2);
+            notes.setEllipsize(TextUtils.TruncateAt.END);
+            if (item.done) notes.setPaintFlags(notes.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
+            card.addView(notes);
+        }
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setPadding(0, dp(8), 0, 0);
+        card.addView(actions);
+
+        Button done = iconButton(item.done ? "↺" : "✓", item.done);
+        done.setTextSize(18);
+        done.setOnClickListener(v -> toggleDone(item));
+        actions.addView(done, weightedParams(dp(38), 1));
+
+        SpaceView gap1 = new SpaceView(this);
+        actions.addView(gap1, new LinearLayout.LayoutParams(dp(6), 1));
+
+        Button edit = iconButton("✎", false);
+        edit.setTextSize(18);
+        edit.setOnClickListener(v -> showItemDialog(item, item.photoUri));
+        actions.addView(edit, weightedParams(dp(38), 1));
+
+        SpaceView gap2 = new SpaceView(this);
+        actions.addView(gap2, new LinearLayout.LayoutParams(dp(6), 1));
+
+        Button delete = iconButton("×", false);
+        delete.setTextSize(20);
+        delete.setTextColor(Color.rgb(185, 28, 28));
+        delete.setOnClickListener(v -> confirmDelete(item));
+        actions.addView(delete, weightedParams(dp(38), 1));
+
+        return card;
     }
 
     private void capturePhoto() {
@@ -178,7 +301,7 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             if (pendingPhotoUri != null) deletePhoto(pendingPhotoUri.toString());
             pendingPhotoUri = null;
-            Toast.makeText(this, "Camera app not available on this device.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Camera app not available.", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -214,36 +337,29 @@ public class MainActivity extends Activity {
         preview.setOnClickListener(v -> showFullScreenPhoto(photoUri));
         form.addView(preview, fullWidthParams(dp(190)));
 
-        TextView quantityLabel = label("Quantity");
-        quantityLabel.setPadding(0, dp(14), 0, dp(4));
-        form.addView(quantityLabel);
-
         EditText quantityInput = new EditText(this);
         quantityInput.setSingleLine(true);
+        quantityInput.setHint("Qty");
         quantityInput.setInputType(InputType.TYPE_CLASS_NUMBER);
         quantityInput.setText(isNew ? "1" : existing.quantity);
         quantityInput.setSelectAllOnFocus(true);
         quantityInput.setTextSize(18);
-        form.addView(quantityInput, fullWidthParams(dp(52)));
-
-        TextView notesLabel = label("Notes");
-        notesLabel.setPadding(0, dp(14), 0, dp(4));
-        form.addView(notesLabel);
+        form.addView(quantityInput, fullWidthWithTopMargin(dp(54), dp(12)));
 
         EditText notesInput = new EditText(this);
         notesInput.setMinLines(3);
         notesInput.setGravity(Gravity.TOP | Gravity.START);
         notesInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         notesInput.setText(isNew ? "" : existing.notes);
-        notesInput.setHint("Example: shelf A, fragile, supplier name, expiry date…");
+        notesInput.setHint("Notes");
         notesInput.setTextSize(16);
-        form.addView(notesInput, fullWidthParams(dp(110)));
+        form.addView(notesInput, fullWidthWithTopMargin(dp(108), dp(8)));
 
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(isNew ? "Add inventory item" : "Edit inventory item")
+                .setTitle(isNew ? "+" : "✎")
                 .setView(form)
-                .setPositiveButton("Save", null)
-                .setNegativeButton("Cancel", (d, which) -> {
+                .setPositiveButton("✓", null)
+                .setNegativeButton("×", (d, which) -> {
                     hideKeyboard(quantityInput);
                     if (isNew) deletePhoto(photoUri);
                 })
@@ -255,17 +371,17 @@ public class MainActivity extends Activity {
                 String quantity = quantityInput.getText().toString().trim();
                 String notes = notesInput.getText().toString().trim();
                 if (quantity.isEmpty()) {
-                    quantityInput.setError("Add a quantity");
+                    quantityInput.setError("Qty");
                     return;
                 }
                 try {
                     int qty = Integer.parseInt(quantity);
                     if (qty < 0) {
-                        quantityInput.setError("Quantity cannot be negative");
+                        quantityInput.setError("0+");
                         return;
                     }
                 } catch (NumberFormatException e) {
-                    quantityInput.setError("Use a whole number");
+                    quantityInput.setError("Number");
                     return;
                 }
 
@@ -284,9 +400,9 @@ public class MainActivity extends Activity {
                     existing.notes = notes;
                 }
                 saveLists();
-                renderList();
                 hideKeyboard(notesInput);
                 dialog.dismiss();
+                showScanScreen();
             });
         });
 
@@ -302,137 +418,30 @@ public class MainActivity extends Activity {
         }, 250);
     }
 
-    private void renderList() {
-        listContainer.removeAllViews();
-        InventoryList activeList = activeList();
-        activeListText.setText("Current list: " + activeList.name);
+    private void showFullScreenPhoto(String uriString) {
+        if (uriString == null || uriString.trim().isEmpty()) return;
 
-        int activeCount = 0;
-        int doneCount = 0;
-        int activeQty = 0;
-        ArrayList<InventoryItem> visibleItems = new ArrayList<>();
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
-        for (InventoryItem item : activeList.items) {
-            if (!item.done) {
-                activeCount++;
-                visibleItems.add(item);
-                try {
-                    activeQty += Integer.parseInt(item.quantity);
-                } catch (Exception ignored) {
-                }
-            }
-        }
-        for (InventoryItem item : activeList.items) {
-            if (item.done) {
-                doneCount++;
-                visibleItems.add(item);
-            }
-        }
-
-        statsText.setText(scanLists.size() + " list" + (scanLists.size() == 1 ? "" : "s")
-                + " • " + activeCount + " active"
-                + " • " + doneCount + " done"
-                + " • active qty " + activeQty);
-        emptyText.setVisibility(visibleItems.isEmpty() ? View.VISIBLE : View.GONE);
-
-        for (int i = 0; i < visibleItems.size(); i += 2) {
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setPadding(0, 0, 0, dp(10));
-            listContainer.addView(row, fullWidthParams(ViewGroup.LayoutParams.WRAP_CONTENT));
-
-            row.addView(itemCard(visibleItems.get(i)), weightedParams(ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            SpaceView gap = new SpaceView(this);
-            row.addView(gap, new LinearLayout.LayoutParams(dp(10), 1));
-
-            if (i + 1 < visibleItems.size()) {
-                row.addView(itemCard(visibleItems.get(i + 1)), weightedParams(ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            } else {
-                SpaceView emptyCell = new SpaceView(this);
-                row.addView(emptyCell, weightedParams(ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            }
-        }
-    }
-
-    private View itemCard(InventoryItem item) {
-        int cardColor = item.done ? Color.rgb(229, 231, 235) : Color.WHITE;
-        int strokeColor = item.done ? Color.rgb(209, 213, 219) : Color.rgb(229, 231, 235);
-        int primaryTextColor = item.done ? Color.rgb(107, 114, 128) : Color.rgb(17, 24, 39);
-        int secondaryTextColor = item.done ? Color.rgb(156, 163, 175) : Color.rgb(55, 65, 81);
-
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(8), dp(8), dp(8), dp(8));
-        card.setBackground(cardBackground(cardColor, dp(16), strokeColor));
-
-        ImageView photo = new ImageView(this);
-        photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        photo.setAdjustViewBounds(true);
-        photo.setBackgroundColor(Color.rgb(243, 244, 246));
-        if (item.done) photo.setAlpha(0.42f);
+        ImageView image = new ImageView(this);
+        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        image.setAdjustViewBounds(true);
+        image.setBackgroundColor(Color.BLACK);
+        image.setPadding(dp(8), dp(8), dp(8), dp(8));
         try {
-            photo.setImageURI(Uri.parse(item.photoUri));
+            image.setImageURI(Uri.parse(uriString));
         } catch (Exception ignored) {
         }
-        photo.setOnClickListener(v -> showFullScreenPhoto(item.photoUri));
-        card.addView(photo, fullWidthParams(dp(142)));
+        image.setOnClickListener(v -> dialog.dismiss());
 
-        TextView qty = new TextView(this);
-        qty.setText("Qty: " + item.quantity);
-        qty.setTextSize(18);
-        qty.setTypeface(Typeface.DEFAULT_BOLD);
-        qty.setTextColor(primaryTextColor);
-        qty.setPadding(0, dp(8), 0, dp(2));
-        if (item.done) qty.setPaintFlags(qty.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
-        card.addView(qty);
-
-        TextView date = new TextView(this);
-        date.setText(item.done ? "Done • " + safeText(item.createdAt) : safeText(item.createdAt));
-        date.setTextSize(11);
-        date.setTextColor(secondaryTextColor);
-        date.setSingleLine(false);
-        date.setMaxLines(2);
-        card.addView(date);
-
-        if (item.notes != null && !item.notes.trim().isEmpty()) {
-            TextView notes = new TextView(this);
-            notes.setText(item.notes);
-            notes.setTextSize(13);
-            notes.setTextColor(secondaryTextColor);
-            notes.setPadding(0, dp(6), 0, 0);
-            notes.setMaxLines(2);
-            notes.setEllipsize(TextUtils.TruncateAt.END);
-            if (item.done) notes.setPaintFlags(notes.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
-            card.addView(notes);
+        dialog.setContentView(image);
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         }
-
-        Button done = button(item.done ? "Undo" : "Done", item.done);
-        done.setTextSize(13);
-        done.setOnClickListener(v -> toggleDone(item));
-        LinearLayout.LayoutParams doneParams = fullWidthParams(dp(38));
-        doneParams.setMargins(0, dp(8), 0, 0);
-        card.addView(done, doneParams);
-
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.setPadding(0, dp(6), 0, 0);
-        card.addView(actions);
-
-        Button edit = button("Edit", false);
-        edit.setTextSize(12);
-        edit.setOnClickListener(v -> showItemDialog(item, item.photoUri));
-        actions.addView(edit, weightedParams(dp(36), 1));
-
-        SpaceView gap = new SpaceView(this);
-        actions.addView(gap, new LinearLayout.LayoutParams(dp(6), 1));
-
-        Button delete = button("Delete", false);
-        delete.setTextSize(12);
-        delete.setTextColor(Color.rgb(185, 28, 28));
-        delete.setOnClickListener(v -> confirmDelete(item));
-        actions.addView(delete, weightedParams(dp(36), 1));
-
-        return card;
     }
 
     private void toggleDone(InventoryItem item) {
@@ -445,90 +454,59 @@ public class MainActivity extends Activity {
             activeList.items.add(0, item);
         }
         saveLists();
-        renderList();
-    }
-
-    private void showFullScreenPhoto(String uriString) {
-        if (uriString == null || uriString.trim().isEmpty()) return;
-
-        Dialog dialog = new Dialog(this);
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
-        root.setPadding(dp(12), dp(16), dp(12), dp(16));
-        root.setBackgroundColor(Color.BLACK);
-
-        TextView hint = new TextView(this);
-        hint.setText("Tap image to close");
-        hint.setTextColor(Color.WHITE);
-        hint.setTextSize(14);
-        hint.setGravity(Gravity.CENTER);
-        hint.setPadding(0, 0, 0, dp(8));
-        root.addView(hint, fullWidthParams(ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        ImageView image = new ImageView(this);
-        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        image.setAdjustViewBounds(true);
-        image.setBackgroundColor(Color.BLACK);
-        try {
-            image.setImageURI(Uri.parse(uriString));
-        } catch (Exception ignored) {
-        }
-        image.setOnClickListener(v -> dialog.dismiss());
-        root.addView(image, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1
-        ));
-
-        Button close = button("Close", false);
-        close.setOnClickListener(v -> dialog.dismiss());
-        root.addView(close, fullWidthParams(dp(48)));
-
-        dialog.setContentView(root);
-        dialog.show();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        }
+        showScanScreen();
     }
 
     private void confirmDelete(InventoryItem item) {
         new AlertDialog.Builder(this)
-                .setTitle("Delete item?")
-                .setMessage("This removes the scan from the current list and deletes the saved photo from the phone gallery folder used by this app.")
+                .setTitle("Delete?")
                 .setPositiveButton("Delete", (dialog, which) -> {
                     activeList().items.remove(item);
                     deletePhoto(item.photoUri);
                     saveLists();
-                    renderList();
+                    showScanScreen();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("×", null)
+                .show();
+    }
+
+    private void confirmDeleteList(InventoryList list) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete list?")
+                .setMessage(safeListName(list))
+                .setPositiveButton("Delete", (dialog, which) -> {
+                    for (InventoryItem item : list.items) {
+                        deletePhoto(item.photoUri);
+                    }
+                    scanLists.remove(list);
+                    ensureDefaultList();
+                    ensureActiveListExists();
+                    saveLists();
+                    showListsScreen();
+                })
+                .setNegativeButton("×", null)
                 .show();
     }
 
     private void showNewListDialog() {
         EditText input = new EditText(this);
         input.setSingleLine(true);
-        input.setHint("Example: Grocery stock, Shelf A, June count…");
+        input.setHint("Name");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         input.setPadding(dp(16), dp(8), dp(16), dp(8));
 
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Create new scan list")
+                .setTitle("+")
                 .setView(input)
-                .setPositiveButton("Create", null)
-                .setNegativeButton("Cancel", null)
+                .setPositiveButton("✓", null)
+                .setNegativeButton("×", null)
                 .create();
 
         dialog.setOnShowListener(d -> {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                 String name = input.getText().toString().trim();
                 if (name.isEmpty()) {
-                    input.setError("Add a list name");
+                    input.setError("Name");
                     return;
                 }
                 InventoryList list = new InventoryList();
@@ -540,7 +518,7 @@ public class MainActivity extends Activity {
                 saveLists();
                 hideKeyboard(input);
                 dialog.dismiss();
-                renderList();
+                showScanScreen();
             });
         });
 
@@ -552,31 +530,13 @@ public class MainActivity extends Activity {
         }, 250);
     }
 
-    private void showSwitchListDialog() {
-        if (scanLists.isEmpty()) {
-            ensureDefaultList();
-        }
-
-        String[] names = new String[scanLists.size()];
-        for (int i = 0; i < scanLists.size(); i++) {
-            InventoryList list = scanLists.get(i);
-            int active = 0;
-            int done = 0;
-            for (InventoryItem item : list.items) {
-                if (item.done) done++; else active++;
-            }
-            names[i] = list.name + "  (" + active + " active, " + done + " done)";
-        }
-
+    private void showAppMenu() {
+        String[] actions = {"Export", "Import"};
         new AlertDialog.Builder(this)
-                .setTitle("Switch scan list")
-                .setItems(names, (dialog, which) -> {
-                    setActiveListId(scanLists.get(which).id);
-                    saveLists();
-                    renderList();
+                .setItems(actions, (dialog, which) -> {
+                    if (which == 0) exportJson();
+                    if (which == 1) showImportDialog();
                 })
-                .setPositiveButton("New List", (dialog, which) -> showNewListDialog())
-                .setNegativeButton("Cancel", null)
                 .show();
     }
 
@@ -587,9 +547,9 @@ public class MainActivity extends Activity {
             send.setType("application/json");
             send.putExtra(Intent.EXTRA_SUBJECT, "Inventory Snap export");
             send.putExtra(Intent.EXTRA_TEXT, json);
-            startActivity(Intent.createChooser(send, "Export inventory JSON"));
+            startActivity(Intent.createChooser(send, "Export"));
         } catch (Exception e) {
-            Toast.makeText(this, "Could not export inventory.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Export failed.", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -598,14 +558,14 @@ public class MainActivity extends Activity {
         input.setMinLines(8);
         input.setGravity(Gravity.TOP | Gravity.START);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        input.setHint("Paste JSON exported from this app here. Imported lists are added to the top.");
+        input.setHint("JSON");
         input.setPadding(dp(16), dp(12), dp(16), dp(12));
 
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Import JSON")
+                .setTitle("Import")
                 .setView(input)
-                .setPositiveButton("Import", null)
-                .setNegativeButton("Cancel", null)
+                .setPositiveButton("✓", null)
+                .setNegativeButton("×", null)
                 .create();
 
         dialog.setOnShowListener(d -> {
@@ -613,12 +573,12 @@ public class MainActivity extends Activity {
                 try {
                     int imported = importJson(input.getText().toString().trim());
                     saveLists();
-                    renderList();
                     hideKeyboard(input);
                     dialog.dismiss();
-                    Toast.makeText(this, "Imported " + imported + " list(s).", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, imported + " list(s)", Toast.LENGTH_SHORT).show();
+                    showListsScreen();
                 } catch (Exception e) {
-                    input.setError("Invalid JSON export");
+                    input.setError("Invalid JSON");
                 }
             });
         });
@@ -712,7 +672,7 @@ public class MainActivity extends Activity {
     private JSONObject toRootJson() {
         JSONObject root = new JSONObject();
         try {
-            root.put("version", 2);
+            root.put("version", 3);
             root.put("activeListId", activeList().id);
             JSONArray array = new JSONArray();
             for (InventoryList list : scanLists) {
@@ -767,26 +727,53 @@ public class MainActivity extends Activity {
         }
     }
 
-    private Button button(String text, boolean primary) {
+    private ScrollView baseScrollView() {
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        scrollView.setBackgroundColor(Color.rgb(246, 248, 252));
+        return scrollView;
+    }
+
+    private LinearLayout baseRoot() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(12), dp(14), dp(12), dp(24));
+        return root;
+    }
+
+    private LinearLayout toolbar() {
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setPadding(0, 0, 0, dp(6));
+        return top;
+    }
+
+    private TextView screenTitle(String text) {
+        TextView title = new TextView(this);
+        title.setText(text);
+        title.setTextSize(26);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(Color.rgb(17, 24, 39));
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        title.setGravity(Gravity.CENTER_VERTICAL);
+        return title;
+    }
+
+    private Button iconButton(String text, boolean primary) {
         Button button = new Button(this);
         button.setText(text);
         button.setAllCaps(false);
-        button.setTextSize(15);
+        button.setTextSize(22);
         button.setTypeface(Typeface.DEFAULT_BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(0, 0, 0, dp(2));
         button.setTextColor(primary ? Color.WHITE : Color.rgb(37, 99, 235));
         button.setBackground(cardBackground(primary ? Color.rgb(37, 99, 235) : Color.WHITE,
                 dp(14),
                 primary ? Color.rgb(37, 99, 235) : Color.rgb(191, 219, 254)));
         return button;
-    }
-
-    private TextView label(String text) {
-        TextView label = new TextView(this);
-        label.setText(text);
-        label.setTextSize(14);
-        label.setTypeface(Typeface.DEFAULT_BOLD);
-        label.setTextColor(Color.rgb(55, 65, 81));
-        return label;
     }
 
     private GradientDrawable cardBackground(int color, int radius, int strokeColor) {
@@ -801,8 +788,24 @@ public class MainActivity extends Activity {
         return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height);
     }
 
+    private LinearLayout.LayoutParams fullWidthWithBottomMargin(int height, int bottomMargin) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height);
+        params.setMargins(0, 0, 0, bottomMargin);
+        return params;
+    }
+
+    private LinearLayout.LayoutParams fullWidthWithTopMargin(int height, int topMargin) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height);
+        params.setMargins(0, topMargin, 0, 0);
+        return params;
+    }
+
     private LinearLayout.LayoutParams weightedParams(int height, float weight) {
         return new LinearLayout.LayoutParams(0, height, weight);
+    }
+
+    private LinearLayout.LayoutParams squareParams(int size) {
+        return new LinearLayout.LayoutParams(dp(size), dp(size));
     }
 
     private int dp(int value) {
@@ -815,6 +818,11 @@ public class MainActivity extends Activity {
 
     private String safeText(String value) {
         return value == null ? "" : value;
+    }
+
+    private String safeListName(InventoryList list) {
+        if (list == null || list.name == null || list.name.trim().isEmpty()) return "Default";
+        return list.name;
     }
 
     private void hideKeyboard(View view) {
