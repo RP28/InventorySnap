@@ -1,63 +1,40 @@
-# Inventory Snap
+# InventorySnap — one-photo-at-a-time UI
 
-A tiny native Android inventory app.
+## Replace this file
 
-## Current UI
+`app/src/main/java/com/example/inventorysnap/MainActivity.java`
 
-- First screen: scan lists.
-- Tap a list to open its scans.
-- `+` on the list screen creates a new list.
-- `×` on a list deletes the whole list.
-- Second screen: scans for the selected list.
-- `+` on the scan screen takes a new scan.
-- Scans are shown in a two-column grid.
-- Images use `FIT_CENTER`, so photos are not cropped.
-- Tap an image to view it full screen.
-- `✓` marks a scan done. Done scans move to the bottom and are greyed/struck-through.
-- `↺` undoes done.
-- `✎` edits quantity/notes.
-- `×` deletes a scan.
-- `⋮` on the list screen contains export/import.
-- The main screens now apply status/navigation bar safe-area padding so content does not overlap the phone notification bar or bottom gesture/navigation area.
+This replacement is based on the public `RP28/InventorySnap` repository's `main` branch inspected on 17 November 2026. No Gradle dependency, layout XML, manifest, or resources need to change.
 
-The app uses only Android's built-in Java APIs. There is no Flutter, React Native, Firebase, or server.
+## New workflow
 
-## Device support
+1. Open a list. The screen shows **Capture mode** with a photo count, without rendering any image thumbnails.
+2. Tap **Take photo**. The standard camera opens and a successful capture is immediately saved with quantity 1 and blank notes.
+3. Tap **Find mode**. Exactly one photo is decoded in a worker thread to a display-sized bitmap.
+4. Tap **Found**, **Skip**, or **Not found** to move on. Found/Not found persist to JSON; Skip is session-only and stays pending.
+5. At the end, use **Review again** or **Back to capture**. Pending photos are prioritized on each new review.
+6. **Edit details** adjusts quantity and notes; **Delete photo** deletes the record and the underlying gallery photo.
 
-This version targets Android 10+ (`minSdk 29`) so it can save full-size camera photos through Android's scoped MediaStore API without needing a separate file-provider library.
+## Compatibility
 
-Photos are saved under your phone gallery's `Pictures/InventorySnap` folder. The item lists are stored locally on the phone using SharedPreferences.
+- Reads original SharedPreferences `inventory_snap_store`, `lists_json_v2`, and legacy `items_json`.
+- Reads old `done: true` as `status: found` and `done: false` as `status: pending`.
+- Writes new `status` as `pending`, `found`, or `not_found`, plus a compatible `done` boolean.
+- Keeps original MediaStore location `Pictures/InventorySnap`.
+- Keeps JSON export/import (exports photo URI references, not binary image bytes).
+- No network or external libraries used.
 
-## Build the APK without installing Android Studio
+## Before installing
 
-You can build the APK in GitHub Actions.
+Back up your original source and export your data using the current app. Install a debug build as an **update** over the original app (same applicationId), not by uninstalling the original; uninstalling usually clears local inventory data. Photos may remain in the gallery but the index would be lost.
 
-1. Push these files to your GitHub repository.
-2. Go to the repository's **Actions** tab.
-3. Open **Build debug APK**.
-4. Click **Run workflow**.
-5. When it completes, open the finished workflow run.
-6. Download the artifact named `inventory-snap-debug-apk`.
-7. Unzip it. Inside you will see `app-debug.apk`.
-8. Move `app-debug.apk` to your Android phone and open it.
-9. Android may ask you to allow installation from that source. Allow it, install, then open Inventory Snap.
+## Build
 
-## Build locally, optional
+Use the existing GitHub Actions workflow: push the replaced file, run **Build debug APK**, download `inventory-snap-debug-apk`, then install `app-debug.apk`.
 
-Only do this if you already have Java, Gradle, and the Android SDK installed:
+## Limitations
 
-```bash
-gradle :app:assembleDebug
-```
-
-The APK will be at:
-
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
-
-## Notes
-
-- The debug APK is enough for your own phone/testing.
-- For Play Store release, you would need a signed release APK/AAB.
-- Export/import stores inventory text data and image URI references. It is mainly for backup on the same phone/session; moving the JSON to a different phone may not restore photo access unless the photos are also moved.
+- This implementation hasn't been compiled or tested on an Android device in this environment. Build/test it on a copy or branch first.
+- Existing photo URI-only backups are not portable to another phone without the photo files.
+- Photos are saved to the gallery, exactly as in the original app; automatic discard of camera photos is intentionally not implemented.
+- Skipping doesn't change persistent status. Starting a new review includes skipped items again.
