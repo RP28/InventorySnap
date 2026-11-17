@@ -1,3 +1,4 @@
+
 package com.example.inventorysnap;
 
 import android.app.Activity;
@@ -720,3 +721,725 @@ public class MainActivity extends Activity {
 
         pendingPhoto = null;
         showCapture();
+
+        // Automatically open quantity and notes after capture.
+        if (newlyCaptured != null) {
+            editItem(newlyCaptured);
+        }
+    }
+
+    // QUANTITY AND NOTES
+    private void editItem(InventoryItem item) {
+        LinearLayout form = vertical();
+        form.setPadding(
+            dp(20), dp(10), dp(20), 0
+        );
+
+        EditText qty = new EditText(this);
+        qty.setHint("Quantity");
+        qty.setInputType(InputType.TYPE_CLASS_NUMBER);
+        qty.setText(item.quantity);
+        form.addView(qty);
+
+        EditText notes = new EditText(this);
+        notes.setHint("Notes");
+        notes.setInputType(
+            InputType.TYPE_CLASS_TEXT |
+            InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        );
+        notes.setMinLines(2);
+        notes.setText(item.notes);
+        form.addView(notes);
+
+        AlertDialog dialog =
+            new AlertDialog.Builder(this)
+                .setTitle("Quantity and notes")
+                .setView(form)
+                .setPositiveButton("Save", null)
+                .setNegativeButton("Cancel", null)
+                .create();
+
+        dialog.setOnShowListener(d ->
+            dialog.getButton(
+                AlertDialog.BUTTON_POSITIVE
+            ).setOnClickListener(v -> {
+
+                String value =
+                    qty.getText().toString().trim();
+
+                try {
+                    if (Integer.parseInt(value) < 0) {
+                        throw new NumberFormatException();
+                    }
+                } catch (Exception ex) {
+                    qty.setError(
+                        "Enter a non-negative number"
+                    );
+                    return;
+                }
+
+                item.quantity = value;
+                item.notes =
+                    notes.getText().toString().trim();
+
+                save();
+                dialog.dismiss();
+
+                if ("review".equals(screen)) {
+                    showCard(item);
+                } else {
+                    showCapture();
+                }
+            })
+        );
+
+        dialog.show();
+    }
+
+    // DELETE ITEM
+    private void confirmDeleteItem(InventoryItem item) {
+        new AlertDialog.Builder(this)
+            .setTitle("Delete this photo?")
+            .setMessage(
+                "This also deletes the saved photo " +
+                "from your gallery."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Delete", (d, w) -> {
+                active().items.remove(item);
+                deletePhoto(item.photoUri);
+                visited.remove(item.id);
+                save();
+                showNextCard();
+            })
+            .show();
+    }
+
+    // LIST MANAGEMENT
+    private void addList() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("List name");
+
+        input.setPadding(
+            dp(20), dp(8), dp(20), dp(8)
+        );
+
+        AlertDialog dialog =
+            new AlertDialog.Builder(this)
+                .setTitle("New list")
+                .setView(input)
+                .setPositiveButton("Create", null)
+                .setNegativeButton("Cancel", null)
+                .create();
+
+        dialog.setOnShowListener(v ->
+            dialog.getButton(
+                AlertDialog.BUTTON_POSITIVE
+            ).setOnClickListener(w -> {
+
+                String name =
+                    input.getText().toString().trim();
+
+                if (name.isEmpty()) {
+                    input.setError("Required");
+                    return;
+                }
+
+                InventoryList list = new InventoryList();
+                list.id = UUID.randomUUID().toString();
+                list.name = name;
+                list.createdAt = now();
+
+                lists.add(0, list);
+                setActive(list.id);
+                save();
+
+                dialog.dismiss();
+                showCapture();
+            })
+        );
+
+        dialog.show();
+    }
+
+    private void confirmDeleteList(InventoryList list) {
+        new AlertDialog.Builder(this)
+            .setTitle("Delete " + list.name + "?")
+            .setMessage(
+                "This also deletes all photos belonging " +
+                "to this list from your gallery."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Delete", (d, w) -> {
+
+                for (InventoryItem item : list.items) {
+                    deletePhoto(item.photoUri);
+                }
+
+                lists.remove(list);
+                ensureDefault();
+                setActive(lists.get(0).id);
+                save();
+                showLists();
+            })
+            .show();
+    }
+
+    private void deletePhoto(String uri) {
+        try {
+            getContentResolver().delete(
+                Uri.parse(uri), null, null
+            );
+        } catch (Exception ignored) {
+        }
+    }
+
+    // IMPORT / EXPORT
+    private void showBackupMenu() {
+        new AlertDialog.Builder(this)
+            .setItems(
+                new String[]{
+                    "Export JSON",
+                    "Import JSON"
+                },
+                (d, which) -> {
+
+                    if (which == 0) {
+                        Intent send = new Intent(
+                            Intent.ACTION_SEND
+                        );
+
+                        send.setType("application/json");
+
+                        send.putExtra(
+                            Intent.EXTRA_SUBJECT,
+                            "Inventory Snap export"
+                        );
+
+                        send.putExtra(
+                            Intent.EXTRA_TEXT,
+                            toRootJson().toString()
+                        );
+
+                        startActivity(
+                            Intent.createChooser(
+                                send, "Export"
+                            )
+                        );
+                    } else {
+                        importDialog();
+                    }
+                }
+            )
+            .show();
+    }
+
+    private void importDialog() {
+        EditText input = new EditText(this);
+        input.setMinLines(8);
+        input.setGravity(Gravity.TOP);
+        input.setHint("Paste exported JSON");
+
+        AlertDialog dialog =
+            new AlertDialog.Builder(this)
+                .setTitle("Import JSON")
+                .setView(input)
+                .setPositiveButton("Import", null)
+                .setNegativeButton("Cancel", null)
+                .create();
+
+        dialog.setOnShowListener(x ->
+            dialog.getButton(
+                AlertDialog.BUTTON_POSITIVE
+            ).setOnClickListener(v -> {
+
+                try {
+                    String raw =
+                        input.getText().toString().trim();
+
+                    ArrayList<InventoryList> imported =
+                        new ArrayList<>();
+
+                    if (raw.startsWith("[")) {
+                        InventoryList legacy =
+                            new InventoryList();
+
+                        legacy.id =
+                            UUID.randomUUID().toString();
+
+                        legacy.name = "Imported " + now();
+                        legacy.createdAt = now();
+
+                        JSONArray arr = new JSONArray(raw);
+
+                        for (int i = 0; i < arr.length(); i++) {
+                            legacy.items.add(
+                                InventoryItem.fromJson(
+                                    arr.getJSONObject(i)
+                                )
+                            );
+                        }
+
+                        imported.add(legacy);
+                    } else {
+                        JSONArray arr =
+                            new JSONObject(raw)
+                                .getJSONArray("lists");
+
+                        for (int i = 0; i < arr.length(); i++) {
+                            imported.add(
+                                InventoryList.fromJson(
+                                    arr.getJSONObject(i)
+                                )
+                            );
+                        }
+                    }
+
+                    if (imported.isEmpty()) {
+                        throw new IllegalArgumentException(
+                            "No lists"
+                        );
+                    }
+
+                    for (InventoryList list : imported) {
+                        list.id =
+                            UUID.randomUUID().toString();
+
+                        for (InventoryItem item : list.items) {
+                            item.id =
+                                UUID.randomUUID().toString();
+                        }
+                    }
+
+                    lists.addAll(0, imported);
+                    setActive(imported.get(0).id);
+                    save();
+
+                    dialog.dismiss();
+                    showLists();
+
+                } catch (Exception ex) {
+                    input.setError("Invalid JSON");
+                }
+            })
+        );
+
+        dialog.show();
+    }
+
+    // PERSISTENCE
+    private void load() {
+        lists.clear();
+
+        String raw =
+            getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getString(LISTS_KEY, "");
+
+        try {
+            JSONArray arr =
+                new JSONObject(raw).getJSONArray("lists");
+
+            for (int i = 0; i < arr.length(); i++) {
+                lists.add(
+                    InventoryList.fromJson(
+                        arr.getJSONObject(i)
+                    )
+                );
+            }
+
+        } catch (Exception ignored) {
+        }
+
+        if (lists.isEmpty()) {
+            InventoryList legacy = new InventoryList();
+
+            legacy.id = UUID.randomUUID().toString();
+            legacy.name = "Default";
+            legacy.createdAt = now();
+
+            try {
+                JSONArray arr = new JSONArray(
+                    getSharedPreferences(
+                        PREFS, MODE_PRIVATE
+                    ).getString(LEGACY_KEY, "[]")
+                );
+
+                for (int i = 0; i < arr.length(); i++) {
+                    legacy.items.add(
+                        InventoryItem.fromJson(
+                            arr.getJSONObject(i)
+                        )
+                    );
+                }
+
+            } catch (Exception ignored) {
+            }
+
+            lists.add(legacy);
+            setActive(legacy.id);
+            save();
+        }
+    }
+
+    private void save() {
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+            .edit()
+            .putString(
+                LISTS_KEY,
+                toRootJson().toString()
+            )
+            .putString(
+                ACTIVE_KEY,
+                active().id
+            )
+            .apply();
+    }
+
+    private JSONObject toRootJson() {
+        JSONObject obj = new JSONObject();
+        JSONArray arr = new JSONArray();
+
+        try {
+            obj.put("version", 4);
+            obj.put("activeListId", active().id);
+
+            for (InventoryList list : lists) {
+                arr.put(list.toJson());
+            }
+
+            obj.put("lists", arr);
+
+        } catch (Exception ignored) {
+        }
+
+        return obj;
+    }
+
+    private InventoryList active() {
+        ensureDefault();
+
+        String id =
+            getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getString(ACTIVE_KEY, "");
+
+        for (InventoryList list : lists) {
+            if (list.id.equals(id)) return list;
+        }
+
+        return lists.get(0);
+    }
+
+    private void ensureDefault() {
+        if (!lists.isEmpty()) return;
+
+        InventoryList list = new InventoryList();
+        list.id = UUID.randomUUID().toString();
+        list.name = "Default";
+        list.createdAt = now();
+
+        lists.add(list);
+    }
+
+    private void setActive(String id) {
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+            .edit()
+            .putString(ACTIVE_KEY, id)
+            .apply();
+    }
+
+    private static String label(String status) {
+        if ("found".equals(status)) {
+            return "Previously found";
+        }
+
+        if ("not_found".equals(status)) {
+            return "Previously not found";
+        }
+
+        return "Pending";
+    }
+
+    // UI UTILITIES
+    private int statusBarHeight() {
+        int id = getResources().getIdentifier(
+            "status_bar_height",
+            "dimen",
+            "android"
+        );
+
+        return id > 0 ?
+            getResources().getDimensionPixelSize(id) :
+            dp(24);
+    }
+
+    private int navigationBarHeight() {
+        int id = getResources().getIdentifier(
+            "navigation_bar_height",
+            "dimen",
+            "android"
+        );
+
+        return id > 0 ?
+            getResources().getDimensionPixelSize(id) :
+            dp(16);
+    }
+
+    private int dp(int value) {
+        return Math.round(
+            value *
+            getResources().getDisplayMetrics().density
+        );
+    }
+
+    private static String now() {
+        return new SimpleDateFormat(
+            "dd MMM yyyy, h:mm a",
+            Locale.getDefault()
+        ).format(new Date());
+    }
+
+    private LinearLayout horizontal() {
+        LinearLayout x = new LinearLayout(this);
+        x.setOrientation(LinearLayout.HORIZONTAL);
+        x.setGravity(Gravity.CENTER_VERTICAL);
+        return x;
+    }
+
+    private LinearLayout vertical() {
+        LinearLayout x = new LinearLayout(this);
+        x.setOrientation(LinearLayout.VERTICAL);
+        return x;
+    }
+
+    private LinearLayout.LayoutParams matchWrap() {
+        return new LinearLayout.LayoutParams(-1, -2);
+    }
+
+    private LinearLayout.LayoutParams spaced(
+        int top,
+        int bottom
+    ) {
+        LinearLayout.LayoutParams p = matchWrap();
+
+        p.setMargins(
+            0, dp(top), 0, dp(bottom)
+        );
+
+        return p;
+    }
+
+    private View space(int width) {
+        View v = new View(this);
+
+        v.setLayoutParams(
+            new LinearLayout.LayoutParams(
+                dp(width), 1
+            )
+        );
+
+        return v;
+    }
+
+    private TextView text(
+        String s,
+        int size,
+        int color
+    ) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextSize(size);
+        t.setTextColor(color);
+        return t;
+    }
+
+    private TextView title(String s) {
+        TextView t = text(s, 23, DARK);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setGravity(Gravity.CENTER_VERTICAL);
+        return t;
+    }
+
+    private GradientDrawable shape(
+        int color,
+        int radius,
+        int border
+    ) {
+        GradientDrawable b = new GradientDrawable();
+
+        b.setColor(color);
+        b.setCornerRadius(dp(radius));
+        b.setStroke(dp(1), border);
+
+        return b;
+    }
+
+    private Button button(
+        String s,
+        boolean primary
+    ) {
+        Button b = new Button(this);
+
+        b.setText(s);
+        b.setAllCaps(false);
+        b.setTextSize(15);
+
+        b.setTextColor(
+            primary ? Color.WHITE : BLUE
+        );
+
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setPadding(dp(8), 0, dp(8), 0);
+
+        b.setBackground(
+            shape(
+                primary ? BLUE : Color.WHITE,
+                14,
+                primary ? BLUE : 0xffbfdbfe
+            )
+        );
+
+        b.setMinHeight(dp(48));
+
+        return b;
+    }
+
+    // DATA MODELS
+    private static class InventoryList {
+        String id = "";
+        String name = "Default";
+        String createdAt = "";
+
+        ArrayList<InventoryItem> items =
+            new ArrayList<>();
+
+        JSONObject toJson() {
+            JSONObject obj = new JSONObject();
+            JSONArray arr = new JSONArray();
+
+            try {
+                obj.put("id", id);
+                obj.put("name", name);
+                obj.put("createdAt", createdAt);
+
+                for (InventoryItem item : items) {
+                    arr.put(item.toJson());
+                }
+
+                obj.put("items", arr);
+
+            } catch (Exception ignored) {
+            }
+
+            return obj;
+        }
+
+        static InventoryList fromJson(JSONObject obj) {
+            InventoryList list = new InventoryList();
+
+            list.id = obj.optString(
+                "id",
+                UUID.randomUUID().toString()
+            );
+
+            list.name = obj.optString(
+                "name", "Default"
+            );
+
+            list.createdAt = obj.optString(
+                "createdAt", ""
+            );
+
+            JSONArray arr = obj.optJSONArray("items");
+
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    try {
+                        list.items.add(
+                            InventoryItem.fromJson(
+                                arr.getJSONObject(i)
+                            )
+                        );
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            return list;
+        }
+    }
+
+    private static class InventoryItem {
+        String id = UUID.randomUUID().toString();
+        String photoUri = "";
+        String quantity = "1";
+        String notes = "";
+        String createdAt = "";
+        String status = "pending";
+
+        JSONObject toJson() {
+            JSONObject obj = new JSONObject();
+
+            try {
+                obj.put("id", id);
+                obj.put("photoUri", photoUri);
+                obj.put("quantity", quantity);
+                obj.put("notes", notes);
+                obj.put("createdAt", createdAt);
+                obj.put("status", status);
+
+                // Backward compatibility.
+                obj.put(
+                    "done",
+                    "found".equals(status)
+                );
+
+            } catch (Exception ignored) {
+            }
+
+            return obj;
+        }
+
+        static InventoryItem fromJson(JSONObject obj) {
+            InventoryItem item = new InventoryItem();
+
+            item.id = obj.optString(
+                "id", item.id
+            );
+
+            item.photoUri = obj.optString(
+                "photoUri", ""
+            );
+
+            item.quantity = obj.optString(
+                "quantity", "1"
+            );
+
+            item.notes = obj.optString(
+                "notes", ""
+            );
+
+            item.createdAt = obj.optString(
+                "createdAt", ""
+            );
+
+            String saved = obj.optString(
+                "status", ""
+            );
+
+            if (
+                "found".equals(saved) ||
+                "not_found".equals(saved) ||
+                "pending".equals(saved)
+            ) {
+                item.status = saved;
+            } else {
+                item.status = obj.optBoolean(
+                    "done", false
+                ) ? "found" : "pending";
+            }
+
+            return item;
+        }
+    }
+}
